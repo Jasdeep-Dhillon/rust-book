@@ -30,7 +30,7 @@ fn main() {
     // String is just a vector of u8 values
     // Can use range slicing on string to get characters 
     let s = String::from("Здравствуйте");
-    let answer =  &s[0..4];
+    let answer =  &s[0..2];
     println!("First index value {answer}");
     
 }
