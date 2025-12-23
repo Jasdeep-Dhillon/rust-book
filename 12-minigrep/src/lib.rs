@@ -7,25 +7,31 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn build(args: &[String]) -> Result<Config, &'static str> {
-        if args.len() < 2 {
-            return Err("Not enough arguments");
-        }
-        let query = args[0].clone();
-        let file_path = args[1].clone();
-        let ignore_case;
-        if args.len() == 3 {
-            if args.contains(&String::from("-i")) {
-                ignore_case = true;
-            } else {
-                ignore_case = false;
+    pub fn build(mut args: impl Iterator<Item = String>) -> Result<Config, &'static str> {
+        // if args.len() < 2 {
+        //     return Err("Not enough arguments");
+        // }
+        let query = match args.next() {
+            Some(query) => query,
+            None => return Err("Didn't get a query string"),
+        };
+        let file_path = match args.next() {
+            Some(file) => file,
+            None => return Err("Didn't receive a file path"),
+        };
+        let ignore_case = match args.next() {
+            Some(value) => {
+                if value.contains(&String::from("-i")) {
+                    true
+                } else {
+                    false
+                }
             }
-        } else {
-            ignore_case = match std::env::var("IGNORE_CASE") {
-                Ok(ignore_case) => !ignore_case.is_empty() && ignore_case != "0",
+            None => match std::env::var("IGNORE_CASE") {
+                Ok(ignore_case) => !(ignore_case.is_empty() || ignore_case == "0"),
                 Err(_) => false,
-            };
-        }
+            },
+        };
 
         Ok(Config {
             query,
@@ -36,39 +42,27 @@ impl Config {
     pub fn run(&self) -> Result<(), Box<dyn Error>> {
         let contents = std::fs::read_to_string(&self.file_path)?;
 
-        let results = if self.ignore_case {
-            search_case_insensitive(&self.query, &contents)
+        if self.ignore_case {
+            search_case_insensitive(&self.query, &contents).map(|result| println!("{result}"));
         } else {
-            search(&self.query, &contents)
+            search(&self.query, &contents).map(|result| println!("{result}"));
         };
 
-        for line in results {
-            println!("{line}");
-        }
         Ok(())
     }
 }
 
-pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let mut result = Vec::new();
-    // unimplemented!("Implement search function");
-    for line in contents.lines() {
-        if line.contains(query) {
-            result.push(line);
-        }
-    }
-    result
+pub fn search<'a>(query: &'a str, contents: &'a str) -> impl Iterator<Item = &'a str> {
+    contents.lines().filter(move |line| line.contains(query))
 }
 
-pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let query = query.to_lowercase();
-    let mut result = Vec::new();
-    for line in contents.lines() {
-        if line.to_lowercase().contains(&query) {
-            result.push(line);
-        }
-    }
-    result
+pub fn search_case_insensitive<'a>(
+    query: &'a str,
+    contents: &'a str,
+) -> impl Iterator<Item = &'a str> {
+    contents
+        .lines()
+        .filter(move |line| line.to_lowercase().contains(&query.to_lowercase()))
 }
 
 #[cfg(test)]
@@ -83,8 +77,8 @@ Rust:
 safe, fast, productive.
 Pick three.
 Duct tape.";
-
-        assert_eq!(vec!["safe, fast, productive."], search(query, contents));
+        let mut iter = search(query, contents);
+        assert_eq!("safe, fast, productive.", iter.next().unwrap());
     }
 
     #[test]
@@ -95,10 +89,8 @@ Rust:
 safe, fast, productive.
 Pick three.
 Trust me.";
-
-        assert_eq!(
-            vec!["Rust:", "Trust me."],
-            search_case_insensitive(query, contents)
-        );
+        let mut iter = search_case_insensitive(query, contents);
+        assert_eq!("Rust:", iter.next().unwrap());
+        assert_eq!("Trust me.", iter.next().unwrap());
     }
 }
